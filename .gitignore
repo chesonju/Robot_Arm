@@ -1,0 +1,33 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# 모든 png 무시
+*.png
+*.jpg
+*.jpeg
+
+# 폴더 무시
+Data_backup/
+Image_backup/
+recordings/
+Elevator_cv/
+Elevator_OCR-RCNN/
+tmp/
+
+# 특정 확장자 무시
+*.m4a
+*.mp4
+*.txt
+.DS_Store
+
+Scene_recognition/Elevator_OCR_RCNN_V2/frozen_model/*
+!Scene_recognition/Elevator_OCR_RCNN_V2/frozen_model/
+!Scene_recognition/Elevator_OCR_RCNN_V2/frozen_model/.gitkeep

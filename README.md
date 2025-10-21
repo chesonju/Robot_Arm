@@ -23,6 +23,7 @@
 * [ ] IK_FK/calc_all_angles.py 로 모든 계산 (find_target_in_txt.py) 에서 사용
 * [ ] x만큼 이동한 pair 후보 중 골라서 해당 각도로 움직임 테스트 (거리측정용)
 * [ ] 동작 영상 촬영
+* [ ] PPT 작성
 
 # 실행
 

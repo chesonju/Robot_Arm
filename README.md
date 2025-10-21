@@ -1,3 +1,29 @@
+# 해야 할 것
+
+하드웨어
+
+* [x] 하드웨어 조립 (로봇 프레임 서보 브라켓 이용)
+* [x] 로봇 팔 측 아두이노 코드 작성
+* [x] 데모용 엘리베이터 패널 제작
+* [ ] 웹캠 캘리브레이션 (chessboard 50장 정도는 있어야 함)
+* [ ] 캘리브레이션 결과 (초점거리 등) 로 거리 측정 테스트
+
+소프트웨어
+
+* [x] 엘리베이터 버튼 인식 환경 구축 (ocr -> RCNN)
+* [x] IK_FK 구축  (IK 는 너무 변수가 많아서 현재 FK테이블 사용)
+* [x] Speech To Text  (타겟 층수를 음성에서 추출)
+* [x] 카메라에 잡힌 영상 상 버튼 위치 판독
+
+통합
+
+* [ ] 아두이노 ↔️ IK_FK 간 규격 통일 코드 작성 (IK_FK는 각도기반)
+* [ ] 버튼 위치에 따라 로봇 팔 회전으로 중심 정렬
+* [ ] 모터의 이상적인 각도 대비 오차 보정
+* [ ] IK_FK/calc_all_angles.py 로 모든 계산 (find_target_in_txt.py) 에서 사용
+* [ ] x만큼 이동한 pair 후보 중 골라서 해당 각도로 움직임 테스트 (거리측정용)
+* [ ] 동작 영상 촬영
+
 # 실행
 
 uv 환경 으로 구축했습니다
@@ -20,9 +46,7 @@ uv run main_cv.py 2>/dev/null
 uv run Scene_recognition/Elevator_OCR_RCNN_V2/find_buttons.py 2>/dev/null
 ```
 
-# ROBOT ARM
 
-**거리 관련 기술 필요**
 
 ## 폴더 설명
 
@@ -36,6 +60,8 @@ uv run Scene_recognition/Elevator_OCR_RCNN_V2/find_buttons.py 2>/dev/null
   - 장면 인식 (현재 엘리베이터)
 - Speech_recognition
   - 음성 데이터 -> string으로 변환 후 처리 (ex "3층 눌러줘")
+- Panel
+  - 데모용 버튼 패널 코드
 
 ## 자료
 

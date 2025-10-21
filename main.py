@@ -31,7 +31,7 @@ while True:
     center = util.find_center_for_distance(fb, IMAGE_PATH_FOR_TEST_1, str(speech_to_text["floor"]), CTX, out_name=f"step1-{i}.png")
     i += 1
     # 중앙 판정
-    done, offset, cmd = util.is_centered(center, prev_offset, img_size=(1920,1080), tol_px=10)
+    done, offset, cmd = util.is_centered(center, img_size=(1920,1080), tol_px=10)
 
     print("offset:", offset, "cmd:", cmd)
 

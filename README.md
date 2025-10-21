@@ -8,7 +8,8 @@ uv 환경 으로 구축했습니다
 brew install uv
 uv sync # <- 필요 패키지 설치
 
-uv run main 2>/dev/null
+uv run main_cv.py
+uv run main_cv.py 2>/dev/null
 ```
 
 아래와 같이 실행 하면 Scene_recognition/Test_data/Sample.png 를 사용하고Robot_Arm/Scene_recognition/Elevator_OCR_RCNN_V2/OCR_RCNN_V2_out.png 에 결과파일이 나옵니다

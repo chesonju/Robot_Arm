@@ -8,6 +8,8 @@ import glob
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 
+HERE = os.path.dirname(os.path.abspath(__file__)) + "/"
+
 def search_last_coord_in_file(filename, target_x, target_y, tol=1.0):
     """
     filename : 検索対象のテキストファイル
@@ -282,9 +284,12 @@ def find_axis_jump_pairs(filename: str, move=50.0, tol_equal=1e-3, tol_move=1e-2
         "same_y_x_move": same_y_x_move,
     }
 
-def find_axis_jump_pairs_to_txt(filename="angles_coords_step1.txt", move=50):
+def find_axis_jump_pairs_to_txt(filename=HERE + "angles_coords_step1.txt", move=50):
+    '''
+    사진으로 거리 계산용 (x 고정 & y 변화) 및 (y 고정 & x 변화) 쌍을 찾아서 텍스트로 저장, move 기본 50
+    '''
     res = find_axis_jump_pairs(filename, move=move, tol_equal=1e-3, tol_move=1e-2, show_progress=True)
-    output = f"{move}_jump_result.txt"
+    output = f"{HERE}{move}_jump_result.txt"
     with open(output, "w", encoding="utf-8") as f:
         # --- xが同じ & yが±move ---
         f.write(f"xが同じ & yが±{move}: {len(res['same_x_y_move'])}\n")
@@ -300,7 +305,7 @@ def find_axis_jump_pairs_to_txt(filename="angles_coords_step1.txt", move=50):
     print(f"結果を {output} に保存しました。")
 
 def find_target_in_file_to_png(target_x=41.0, target_y=367.0, ranges=((0,175),(0,175),(0,175))):
-    result = find_target_in_file(target_x=target_x, target_y=target_y, filename="./IK_FK/angles_coords_step1.txt", ranges=ranges)
+    result = find_target_in_file(target_x=target_x, target_y=target_y, filename=HERE+"angles_coords_step1.txt", ranges=ranges)
 
     if result:
         print(result)
@@ -384,7 +389,7 @@ PAIR_RE = re.compile(
 
 def expected_png_name(angles: str, coords: str) -> str:
     # txtの行と完全一致するファイル名を期待
-    return f"{angles} {coords}.png"
+    return f"{HERE}{angles} {coords}.png"
 
 def find_png_by_prefix(angles: str) -> str | None:
     # 念のためのフォールバック：座標が微妙に違っても angles 先頭一致で最新を拾う
@@ -431,6 +436,9 @@ def stitch_side_by_side(left_path: str, right_path: str, out_path: str, title: s
     canvas.convert("RGB").save(out_path, format="PNG")
 
 def combine_pair_txt_to_side_png(txt_path: str, out_dir: str = "combined_out", cleanup: bool = True):
+    '''
+    찾은 페어 시각화 함수
+    '''
     os.makedirs(out_dir, exist_ok=True)
     with open(txt_path, "r", encoding="utf-8") as f:
         for line_no, raw in enumerate(f, 1):
@@ -646,6 +654,9 @@ def combine_pair_txt_to_overlay_png(txt_path: str,
                 recolor_mode: str = "global_shift",  # "global_shift" | "indigo_to_pink" | None
                 hue_deg: float = 28.0,
                 sat_gain: float = 1.08):
+    '''
+    찾은 페어 시각화용 함수
+    '''
     os.makedirs(out_dir, exist_ok=True)
     with open(txt_path, "r", encoding="utf-8") as f:
         for line_no, raw in enumerate(f, 1):
@@ -719,16 +730,16 @@ def combine_pair_txt_to_overlay_png(txt_path: str,
 
 if __name__ == "__main__":
     # 一定数の違いがある座標を探す(ここは50)
-    # find_axis_jump_pairs_to_txt()
+    find_axis_jump_pairs_to_txt()
 
     # 特定の座標を探して、対応する角度を描画
-    find_target_in_file_to_png(-300, 200)
+    # find_target_in_file_to_png(-300, 200)
 
     # y座標が同じベアを探して保存
-    # filter_jump_result_same_last_y_and_save_txt(input_path="50_jump_result.txt",tol_equal=1e-6)
+    filter_jump_result_same_last_y_and_save_txt(input_path=f"{HERE}50_jump_result.txt",tol_equal=1e-6)
 
     # 横にならべて合成
-    # combine_pair_txt_to_side_png("50_jump_result_same_last_y.txt")
+    # combine_pair_txt_to_side_png(txt_path=f"{HERE}50_jump_result_same_last_y.txt", out_dir=f"{HERE}combined_out_side", cleanup=True)
 
     # オーバーレイ合成
-    # combine_pair_txt_to_overlay_png("50_jump_result_same_last_y.txt")
+    combine_pair_txt_to_overlay_png(txt_path=f"{HERE}50_jump_result_same_last_y.txt", out_dir=f"{HERE}combined_out_overlay")

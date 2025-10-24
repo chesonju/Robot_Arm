@@ -3,7 +3,9 @@ import numpy as np
 import os
 from tqdm import tqdm
 
-def calc_positions(theta1, theta2, theta3, L=(104, 145, 150), base=(0,92)):
+HERE = os.path.dirname(os.path.abspath(__file__)) + "/"
+
+def calc_positions(theta1, theta2, theta3, L=(104, 145, 180), base=(0,92)):
     """
     UI値(theta1~3, 0..180) → 内部角に変換 → 各点の(x,y)を返す。
     返り値は [(x0,y0),(x1,y1),(x2,y2),(x3,y3)] （ベース含む4点）
@@ -31,7 +33,7 @@ def all_angles_txt(L=(20,20,20), base=(0,10), step=1,
     tqdmで進捗バー表示。大容量なのでバッファ書き込み。
     """
     # 실행위치 기준으로 IK_FK 폴더 밑에 저장
-    save_dir = os.path.join(os.getcwd(), "IK_FK")
+    save_dir = HERE
     os.makedirs(save_dir, exist_ok=True)  # 폴더 없으면 생성
     filepath = os.path.join(save_dir, filename)
 

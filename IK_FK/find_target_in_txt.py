@@ -722,6 +722,7 @@ if __name__ == "__main__":
     # find_axis_jump_pairs_to_txt()
 
     # 特定の座標を探して、対応する角度を描画
+    find_target_in_file(-300, 200, "./IK_FK/angles_coords_step1.txt")
     find_target_in_file_to_png(-300, 200)
 
     # y座標が同じベアを探して保存

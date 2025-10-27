@@ -9,6 +9,7 @@ from pathlib import Path
 
 from Scene_recognition.Elevator_OCR_RCNN_V2 import find_buttons as fb
 from Camera import depth_from_shift
+from IK_FK import enhanced_plot, find_target_in_txt
 import util
 from Speech_recognition import transcribe_file_faster  # 필요하면 주석 해제
 
@@ -223,5 +224,9 @@ while True:
             print("[MOVE] 깊이 정보 없음. m→n 순서로 깊이 먼저 계산하세요.")
         else:
             print("[MOVE] 버튼 누르기 동작 실행 (샘플)")
+            current_x, current_y = enhanced_plot.end_effector_xy(70, 120, 40, L=(104,145,180), base=(0,92), mode="ui")
+            add_depth_x = current_x - z_mm
+            new_coords = (add_depth_x, current_y)
 
+            find_target_in_txt.find_target_in_file(new_coords, "./IK_FK/angles_coords_step1.txt")
 

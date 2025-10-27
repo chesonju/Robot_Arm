@@ -3,6 +3,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
 from matplotlib.patches import Wedge
+import math
+from typing import Tuple, Iterable
+
 
 def run_arm_gui(
     theta1=90, theta2=90, theta3=90,
@@ -135,9 +138,54 @@ def run_arm_gui(
     plt.show(block=block)  # block=False ならすぐ戻る
     return ctrl
 
+def end_effector_xy(
+    theta1: float,
+    theta2: float,
+    theta3: float,
+    L: Iterable[float] = (104.0, 145.0, 180.0),
+    base: Tuple[float, float] = (0.0, 92.0),
+    mode: str = "ui",  # "ui" → (t1,t2,t3) = (0..180,0..180,0..180)
+                       # "internal" → 너의 calc_positions에서 쓰던 내부각(deg)
+) -> Tuple[float, float]:
+    """
+    3-링크 평면 로봇팔의 끝단(x,y)만 반환.
+    - 좌표계/누적합은 네 calc_positions와 동일.
+    - mode="ui"일 때 UI→내부각 변환: [180 - t1, 180 - t2, 90 - t3]
+    - mode="internal"이면 각도를 그대로 사용.
+    """
+    # UI → 내부각 변환 (네 코드의 ui_to_internal과 동일 규칙)
+    if mode == "ui":
+        th1, th2, th3 = 180.0 - float(theta1), 180.0 - float(theta2), 90.0 - float(theta3)
+    elif mode == "internal":
+        th1, th2, th3 = float(theta1), float(theta2), float(theta3)
+    else:
+        raise ValueError('mode는 "ui" 또는 "internal" 중 하나여야 해')
+
+    x_base, y_base = float(base[0]), float(base[1])
+    L1, L2, L3 = float(L[0]), float(L[1]), float(L[2])
+
+    # 누적 각(rad)로 전진기구학
+    a1 = math.radians(th1)
+    a2 = a1 + math.radians(th2)
+    a3 = a2 + math.radians(th3)
+
+    x1 = x_base + L1 * math.cos(a1)
+    y1 = y_base + L1 * math.sin(a1)
+
+    x2 = x1 + L2 * math.cos(a2)
+    y2 = y1 + L2 * math.sin(a2)
+
+    x3 = x2 + L3 * math.cos(a3)
+    y3 = y2 + L3 * math.sin(a3)
+
+    return (x3, y3)
+
 if __name__ == "__main__":    
     # 使い方例
     # run_arm_gui(theta1=159, theta2=79, theta3=32, just_save_plot=True)
     # run_arm_gui(theta1=134, theta2=115, theta3=21, just_save_plot=True)
 
     gui = run_arm_gui(theta1=70, theta2=120, theta3=40, block=True)  # 非ブロッキング
+
+    xy = end_effector_xy(70, 120, 40, L=(104,145,180), base=(0,92), mode="ui")
+    print(xy)

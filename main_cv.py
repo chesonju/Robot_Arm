@@ -4,12 +4,35 @@ import os
 import time
 import datetime
 import threading
+import numpy as np
 from pathlib import Path
 
 from Scene_recognition.Elevator_OCR_RCNN_V2 import find_buttons as fb
 from Camera import depth_from_shift
 import util
 from Speech_recognition import transcribe_file_faster  # 필요하면 주석 해제
+
+from Robot import RobotArm
+
+arm = RobotArm("/dev/ttyUSB0", 9600, us_min=544, us_max=2400)
+
+motor1_Value = 90  # 초기 각도 설정
+motor2_Value = 90  # 초기 각도 설정
+motor3_Value = 90  # 초기 각도 설정
+motor4_Value = 90  # 초기 각도 설정
+motor5_Value = 90  # 초기 각도 설정
+motor6_Value = 90  # 초기 각도 설정
+motor7_Value = 90  # 초기 각도 설정
+
+arm.set_angles({
+    1: motor1_Value,
+    2: motor2_Value,
+    3: motor3_Value,
+    4: motor4_Value,
+    5: motor5_Value,
+    6: motor6_Value,
+    7: motor7_Value
+    })      
 
 # --- 준비: 디렉토리 ---
 Path("recordings").mkdir(exist_ok=True, parents=True)
@@ -64,6 +87,49 @@ stt = transcribe_file_faster.transcribe(VOICE_PATH)
 floor_target = str(stt.get("floor"))
 print("음성 인식:", stt)
 
+# === 너의 캘리브레이션 결과 ===
+K_calib = np.array([[304.92065479,   0.,           156.23274445],
+                    [  0.,           313.68343277, 126.36038472],
+                    [  0.,             0.,           1.        ]], dtype=np.float64)
+
+dist_calib = np.array([[-9.67711486e-03, -2.24344024e-01, -1.53467994e-03, 
+                         6.54834768e-04,  1.48537539e+00]], dtype=np.float64)  # k1,k2,p1,p2,k3
+
+# 캘리브 당시 해상도(추정). cx,cy를 보면 320x240 느낌이라 이렇게 둔다.
+CALIB_W, CALIB_H = 320, 240  # 실제 네가 캘리브 때 썼던 사이즈로 바꿔도 됨
+
+def scale_intrinsics(K_src: np.ndarray, src_size: tuple[int,int], dst_size: tuple[int,int]) -> np.ndarray:
+    """해상도가 달라졌을 때 K 스케일링. (간단 스케일; 리프로젝션 최적은 아님)"""
+    src_w, src_h = src_size
+    dst_w, dst_h = dst_size
+    sx = dst_w / src_w
+    sy = dst_h / src_h
+    K = K_src.copy()
+    K[0,0] *= sx  # fx
+    K[1,1] *= sy  # fy
+    K[0,2] *= sx  # cx
+    K[1,2] *= sy  # cy
+    return K
+
+# 웹캠 실제 사이즈 W,H 읽은 다음에:
+K = scale_intrinsics(K_calib, (CALIB_W, CALIB_H), (W, H))
+dist = dist_calib  # 왜곡계수는 보통 그대로 사용(스케일 영향 적음)
+
+def pixel_to_camera_xyz_mm(u, v, Z_mm, K: np.ndarray, dist: np.ndarray):
+    """
+    왜곡 포함 픽셀좌표(u,v) + 깊이 Z(mm) → 카메라 좌표계(mm).
+    카메라 좌표계: 오른쪽+X, 아래+Y, 앞+Z 가정.
+    """
+    pts = np.array([[[float(u), float(v)]]], dtype=np.float64)  # shape (1,1,2)
+    # 정규화 좌표 (왜곡 제거 + K 반영)
+    undist = cv2.undistortPoints(pts, K, dist, P=None)  # shape (1,1,2), (x_n, y_n)
+    x_n = undist[0,0,0]
+    y_n = undist[0,0,1]
+    X = x_n * Z_mm
+    Y = y_n * Z_mm
+    Z = Z_mm
+    return X, Y, Z
+
 def run_detection_async(frame_bgr, floor_str):
     global is_busy, prev_offset, last_center, last_cmd
     try:
@@ -91,8 +157,8 @@ def run_detection_async(frame_bgr, floor_str):
             print("중앙에 위치 ✓")
         else:
             if cmd == "left":
-                print("왼쪽으로 1도 회전(샘플)")
-                # motor.rotate(-1)
+                print("왼쪽으로 1도 회전")
+                arm.set_angle(0, motor1_Value - 1)  # 1도 왼쪽 회전
             elif cmd == "right":
                 print("오른쪽으로 1도 회전(샘플)")
                 # motor.rotate(+1)
@@ -103,9 +169,10 @@ def run_detection_async(frame_bgr, floor_str):
     finally:
         is_busy = False
 
-print("스페이스바: 버튼 탐지 / Enter: 현재 중심 재표시 / m: 깊이 1샷 / n: 깊이 2샷 후 계산 / ESC: 종료")
+print("스페이스바: 버튼 탐지 / Enter: 현재 중심 재표시 / m: 깊이 1샷 / n: 깊이 2샷 후 계산 / g: 버튼 누르기 / ESC: 종료")
 
 depth_sample_1 = None  # (스냅파일경로, center)
+depth_sample_2 = None  # (스냅파일경로, center)
 
 while True:
     ok, frame = cap.read()
@@ -165,7 +232,7 @@ while True:
             # 복사본 넘겨서 안전하게 처리
             threading.Thread(target=run_detection_async, args=(frame.copy(), floor_target), daemon=True).start()
         else:
-            print("탐지 중... 잠깐만")
+            print("탐지 중...")
 
     elif key == 13:  # Enter: 마지막 중심 콘솔 재로그
         print("[상태] last_center:", last_center, " last_cmd:", last_cmd)
@@ -193,3 +260,19 @@ while True:
                 print("[깊이] 계산 실패:", e)
             finally:
                 depth_sample_1 = None
+
+    elif key == ord('g'):  # Go: 현재 깊이와 중심으로 이동 명령
+        if depth_sample_2 is None:
+            print("[MOVE] 깊이 정보 없음. m→n 순서로 깊이 먼저 계산하세요.")
+        else:
+            _, c2, z_mm = depth_sample_2
+            u, v = float(c2[0]), float(c2[1])
+
+            try:
+                X_mm, Y_mm, Z_mm = pixel_to_camera_xyz_mm(u, v, z_mm, K, dist)
+                print(f"[MOVE] Pixel({u:.1f},{v:.1f}) + Z={Z_mm:.1f} → Camera XYZ(mm)=({X_mm:.1f}, {Y_mm:.1f}, {Z_mm:.1f})")
+                move_to_xyz_mm(X_mm, Y_mm, Z_mm)  # 여기에 실제 로봇 제어
+            except Exception as e:
+                print("[MOVE] 변환 실패:", e)
+
+

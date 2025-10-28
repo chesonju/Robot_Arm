@@ -18,10 +18,10 @@ class RobotArm:
         self,
         port,
         baudrate=115200,
-        map_us_min=500,      # ← 각도→펄스 '계산'에 쓰는 범위
-        map_us_max=2500,
-        safe_us_min=544,     # ← 실제 전송 '클램프'에 쓰는 안전범위
-        safe_us_max=2400,
+        map_us_min=600,      # ← 각도→펄스 '계산'에 쓰는 범위
+        map_us_max=2400,
+        safe_us_min=644,     # ← 실제 전송 '클램프'에 쓰는 안전범위
+        safe_us_max=2300,
         write_delay=0.0
     ):
         self.ser = serial.Serial(port, baudrate, timeout=0.2)
@@ -180,14 +180,9 @@ class RobotArm:
 
 arm = RobotArm("/dev/ttyUSB0",
                baudrate=9600,
-               map_us_min=500, map_us_max=2500,   # 매핑 범위(실서보)
-               safe_us_min=544, safe_us_max=2400) # 안전(제한) 범위
+               map_us_min=600, map_us_max=2400,   # 매핑 범위(실서보)
+               safe_us_min=644, safe_us_max=2300) # 안전(제한) 범위
 
-arm.set_angle(0, 90)          # 매핑: 500~2500으로 계산 → 전송 전 544~2400으로 클램프
-arm.set_angle(0, 180)         # 2500 계산돼도 2400으로 제한되어 나감
+arm.set_angle(0, 90)          # 매핑: 600~2400으로 계산 → 전송 전 644~2300으로 클램프
+arm.set_angle(0, 180)         # 2400 계산돼도 2300으로 제한되어 나감
 arm.set_pulse(1, 2450)        # 직접 펄스 → 2400으로 클램프됨
-arm.set_pulse(1, 2450, strict=True)  # → 예외 발생(ValueError)
-
-# 범위 바꾸고 싶으면
-arm.set_map_limits(600, 2400)      # 계산범위 변경
-arm.set_safe_limits(600, 2400)     # 안전범위 변경

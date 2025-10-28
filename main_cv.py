@@ -17,22 +17,20 @@ from Robot import RobotArm
 
 arm = RobotArm("/dev/ttyUSB0", 9600, us_min=544, us_max=2400)
 
+motor0_Value = 90  # 초기 각도 설정 (집게)
 motor1_Value = 90  # 초기 각도 설정
 motor2_Value = 90  # 초기 각도 설정
 motor3_Value = 90  # 초기 각도 설정
 motor4_Value = 90  # 초기 각도 설정
-motor5_Value = 90  # 초기 각도 설정
-motor6_Value = 90  # 초기 각도 설정
-motor7_Value = 90  # 초기 각도 설정
+motor5_Value = 90  # 초기 각도 설정 (베이스)
 
 arm.set_angles({
-    1: motor1_Value,
-    2: motor2_Value,
-    3: motor3_Value,
-    4: motor4_Value,
-    5: motor5_Value,
-    6: motor6_Value,
-    7: motor7_Value
+    1: motor0_Value,
+    2: motor1_Value,
+    3: motor2_Value,
+    4: motor3_Value,
+    5: motor4_Value,
+    6: motor5_Value,
     })      
 
 # --- 준비: 디렉토리 ---
@@ -116,7 +114,7 @@ def run_detection_async(frame_bgr, floor_str):
         else:
             if cmd == "left":
                 print("왼쪽으로 1도 회전")
-                arm.set_angle(0, motor1_Value - 1)  # 1도 왼쪽 회전
+                arm.set_angle(0, motor5_Value - 1)  # 1도 왼쪽 회전
             elif cmd == "right":
                 print("오른쪽으로 1도 회전(샘플)")
                 # motor.rotate(+1)

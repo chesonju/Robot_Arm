@@ -17,12 +17,12 @@ class RobotArm:
     def __init__(
         self,
         port,
-        baudrate=115200,
-        map_us_min=600,      # ← 각도→펄스 '계산'에 쓰는 범위
-        map_us_max=2400,
+        baudrate=9600,
+        map_us_min=500,      # ← 각도→펄스 '계산'에 쓰는 범위
+        map_us_max=2500,
         safe_us_min=644,     # ← 실제 전송 '클램프'에 쓰는 안전범위
         safe_us_max=2300,
-        write_delay=0.0
+        write_delay=3.0
     ):
         self.ser = serial.Serial(port, baudrate, timeout=0.2)
 
@@ -71,12 +71,14 @@ class RobotArm:
         return max(0.0, min(180.0, d))
 
     def _send(self, motor_id: int, us_value: int):
-        self.ser.write(f"{int(motor_id)} {int(us_value)}\n".encode("ascii"))
+        self.ser.write(f"{int(motor_id)} {int(us_value)} 1\n".encode("ascii"))
+        print(f"[RobotArm] 모터 {motor_id} → {us_value}μs")
+        
         if self.write_delay:
             time.sleep(self.write_delay)
 
     # ---------- 퍼블릭 API ----------
-    def set_angle(self, motor_id: int, deg: float, smooth: bool = True, step_deg: float = 3.0, delay: float = 0.02):
+    def set_angle(self, motor_id: int, deg: float, smooth: bool = True, step_deg: float = 10, delay: float = 0.5):
         """
         모터ID를 deg(°)로 이동.
         1) 오프셋/역방향 반영 → 2) 매핑범위로 펄스 계산 → 3) 안전범위로 클램프 후 전송.
@@ -178,11 +180,50 @@ class RobotArm:
         if self.ser and self.ser.is_open:
             self.ser.close()
 
-arm = RobotArm("/dev/ttyUSB0",
-               baudrate=9600,
-               map_us_min=600, map_us_max=2400,   # 매핑 범위(실서보)
-               safe_us_min=644, safe_us_max=2300) # 안전(제한) 범위
+if __name__ == "__main__":
+    arm = RobotArm("/dev/cu.usbmodem11101",
+                baudrate=9600,
+                map_us_min=500, map_us_max=2500,   # 매핑 범위(실서보)
+                safe_us_min=644, safe_us_max=2300) # 안전(제한) 범위
 
-arm.set_angle(0, 90)          # 매핑: 600~2400으로 계산 → 전송 전 644~2300으로 클램프
-arm.set_angle(0, 180)         # 2400 계산돼도 2300으로 제한되어 나감
-arm.set_pulse(1, 2450)        # 직접 펄스 → 2400으로 클램프됨
+    # arm.set_angle(0, 80) # 그리퍼 -> 0 - 80
+
+    # 보정 설정
+    arm.set_offset(2, +10)
+    arm.set_offset(3, -6)
+    arm.set_offset(4, +6)
+
+    arm.set_reversed(2, True)
+    arm.set_reversed(4, True)
+
+    arm.set_angle(2, 90)
+    arm.set_angle(3, 90)
+    arm.set_angle(4, 90)
+
+# 120_70_80⇨111_97_62_overlay 
+
+    #arm.set_angle(5, 80) # 베이스 회전
+    #input()
+    #arm.set_angle(2, 80)
+    #arm.set_angle(3, 70)
+    #arm.set_angle(4, 120)
+    
+    #input("다음 위치로 이동")
+    #arm.set_angle(2, 62)
+    #arm.set_angle(3, 97)
+    #arm.set_angle(4, 111)
+
+# 128_74_68⇨114_105_51_overlay
+
+    #arm.set_angle(5, 80) # 베이스 회전
+    #input()
+    arm.set_angle(2, 68)
+    arm.set_angle(3, 74)
+    arm.set_angle(4, 128)
+    
+    input("다음 위치로 이동")
+    arm.set_angle(2, 51)
+    arm.set_angle(3, 105)
+    arm.set_angle(4, 114)
+
+    

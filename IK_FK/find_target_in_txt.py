@@ -1,4 +1,4 @@
-import enhanced_plot
+from . import enhanced_plot
 from collections import defaultdict
 from tqdm import tqdm
 import re

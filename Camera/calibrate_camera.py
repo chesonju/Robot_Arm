@@ -1,109 +1,133 @@
-import numpy as np
-import cv2
-import glob
-import os # 폴더 생성을 위해 추가
+# -*- coding: utf-8 -*-
+import glob, os, cv2, numpy as np
 
 # ===================================================================
-# 이 부분의 값을 사용자의 체커보드에 맞게 수정하세요.
-# ===================================================================
-# 1. 체커보드의 내부 코너 개수 (가로, 세로)
-CHECKERBOARD = (9, 6) # 예: 가로 9개, 세로 6개
+# 1. 체커보드 내부 코너 개수 (가로, 세로)
+CHECKERBOARD = (9, 6)
 
-# 2. 체커보드 사각형 하나의 실제 크기 (mm 단위)
-square_size = 25.0 # 예: 25mm
+# 2. 체커보드 한 칸 크기 (mm 단위)
+square_size = 24.0
 
-# 3. 시각화 결과물 및 텍스트 파일을 저장할 폴더 이름
+# 3. 시각화 결과 저장할 폴더
 output_dir = 'calibration_visualization'
+os.makedirs(output_dir, exist_ok=True)
 # ===================================================================
 
-# 출력 폴더가 없다면 생성
-if not os.path.exists(output_dir):
-    os.makedirs(output_dir)
+# 다양한 확장자 포함
+patterns = [
+    './Camera/chessboard_photos/*.jpg',
+    './Camera/chessboard_photos/*.JPG',
+    './Camera/chessboard_photos/*.jpeg',
+    './Camera/chessboard_photos/*.JPEG',
+    './Camera/chessboard_photos/*.png',
+    './Camera/chessboard_photos/*.PNG',
+]
+images = []
+for p in patterns:
+    images.extend(glob.glob(p))
+images = sorted(images)
 
-# 3D 공간의 체커보드 코너 좌표를 저장할 배열
-objp = np.zeros((CHECKERBOARD[0] * CHECKERBOARD[1], 3), np.float32)
+print(f"총 {len(images)}개의 이미지를 불러왔습니다. 캘리브레이션을 시작합니다...")
+
+# 체커보드 3D 포인트 준비
+objp = np.zeros((CHECKERBOARD[0]*CHECKERBOARD[1], 3), np.float32)
 objp[:, :2] = np.mgrid[0:CHECKERBOARD[0], 0:CHECKERBOARD[1]].T.reshape(-1, 2)
-objp = objp * square_size
+objp *= square_size
 
-# 모든 이미지에서 찾은 3D 'object points'와 2D 'image points'를 저장할 리스트
-objpoints = [] # 3D 포인트
-imgpoints = [] # 2D 이미지 속 포인트
+objpoints, imgpoints = [], []
+save_ok = 0
+success_cnt = 0
 
-# 현재 폴더에 있는 모든 jpg 이미지를 불러옵니다.
-images = glob.glob('./Camera/chessboard_photos/*.jpg')
+for fname in images:
+    img = cv2.imread(fname)
+    if img is None:
+        print(f"❌ 로드 실패: {fname}")
+        continue
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    ret, corners = cv2.findChessboardCorners(gray, CHECKERBOARD, None)
 
-if not images:
-    print("오류: 현재 폴더에 .jpg 이미지가 없습니다. 체커보드 사진을 폴더에 넣어주세요.")
-else:
-    print(f"총 {len(images)}개의 이미지를 불러왔습니다. 캘리브레이션을 시작합니다...")
+    if ret:
+        success_cnt += 1
+        print(f"✅ {fname} 에서 코너 검출 성공!")
 
-    for fname in images:
-        img = cv2.imread(fname)
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        corners2 = cv2.cornerSubPix(
+            gray, corners, (11,11), (-1,-1),
+            (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+        )
+        objpoints.append(objp)
+        imgpoints.append(corners2)
 
-        # 체커보드 코너 찾기
-        ret, corners = cv2.findChessboardCorners(gray, CHECKERBOARD, None)
+        vis = img.copy()
+        cv2.drawChessboardCorners(vis, CHECKERBOARD, corners2, ret)
 
-        # 코너를 찾았다면
-        if ret == True:
-            print(f"✅ {fname} 에서 코너 검출 성공!")
-            objpoints.append(objp)
+        base = os.path.basename(fname)
+        stem, ext = os.path.splitext(base)
+        out_name = f"{stem}_calibrated{ext.lower()}"
+        output_path = os.path.join(output_dir, out_name)
 
-            corners2 = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1),
-                                        (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001))
-            imgpoints.append(corners2)
-            
-            # === 시각화 이미지를 그려서 파일로 저장하는 부분 ===
-            cv2.drawChessboardCorners(img, CHECKERBOARD, corners2, ret)
-            # 저장할 파일 경로 생성 (예: calibration_visualization/image1_calibrated.jpg)
-            output_path = os.path.join(output_dir, os.path.basename(fname).replace('.jpg', '_calibrated.jpg'))
-            cv2.imwrite(output_path, img)
-            
+        if cv2.imwrite(output_path, vis):
+            save_ok += 1
         else:
-            print(f"❌ {fname} 에서 코너 검출 실패...")
-
-    # 캘리브레이션 실행
-    if objpoints and imgpoints:
-        print("\n카메라 캘리브레이션을 실행합니다...")
-        ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
-
-        if ret:
-            print("✅ 캘리브레이션 성공! 결과를 'calibration_results.txt' 파일로 저장합니다.")
-            
-            # === 결과값을 의미와 함께 .txt 파일로 저장하는 부분 ===
-            with open('./Camera/calibration_results.txt', 'w', encoding='utf-8') as f:
-                f.write("========== 카메라 캘리브레이션 결과 ==========\n\n")
-                
-                f.write("## 1. 카메라 행렬 (Camera Matrix)\n")
-                f.write(" - 카메라의 내부 파라미터를 담고 있는 3x3 행렬입니다.\n")
-                f.write(" - fx, fy: 픽셀 단위의 초점 거리\n")
-                f.write(" - cx, cy: 이미지의 중심점 (주점)\n")
-                f.write(str(mtx) + "\n\n")
-
-                f.write("## 2. 왜곡 계수 (Distortion Coefficients)\n")
-                f.write(" - 렌즈로 인해 발생하는 이미지의 왜곡(방사 왜곡, 접선 왜곡)을 설명하는 값들입니다.\n")
-                f.write(str(dist) + "\n\n")
-
-                fx = mtx[0, 0]
-                fy = mtx[1, 1]
-                cx = mtx[0, 2]
-                cy = mtx[1, 2]
-
-                f.write("## 3. 주요 파라미터 요약\n")
-                f.write(f">> 초점 거리 (Focal Length): fx = {fx:.4f} pixels, fy = {fy:.4f} pixels\n")
-                f.write(f">> 주점 (Principal Point): cx = {cx:.4f} pixels, cy = {cy:.4f} pixels\n")
-            
-            print(f">> 초점 거리 (Focal Length): fx = {fx:.4f} pixels, fy = {fy:.4f} pixels")
-            print(f">> 주점 (Principal Point): cx = {cx:.4f} pixels, cy = {cy:.4f} pixels")
-        else:
-            print("캘리브레이션에 실패했습니다.")
-
+            print(f"❌ 저장 실패: {output_path}")
     else:
-        print("\n오류: 유효한 체커보드 코너를 하나도 찾지 못했습니다. 사진을 확인해주세요.")
+        print(f"❌ {fname} 에서 코너 검출 실패...")
 
-'''
-fx, fy: 이것이 바로 우리가 찾던 픽셀 단위의 초점 거리입니다. fx는 x축 초점 거리, 
-fy는 y축 초점 거리이며 보통 두 값은 매우 유사합니다. 거리 계산 공식에는 이 fx 또는 fy 값을 사용하면 됩니다.
+print(f"\n[요약] 코너 검출 성공: {success_cnt}장, 시각화 저장 성공: {save_ok}장")
 
-cx, cy: 이미지의 중심점(주점)의 픽셀 좌표입니다. 일반적으로 이미지 해상도의 절반에 가까운 값이 나옵니다.
-'''
+# ──────────────────────────────────────────────────────────────
+#  캘리브레이션 실행
+# ──────────────────────────────────────────────────────────────
+if objpoints and imgpoints:
+    print("\n카메라 캘리브레이션 실행 중...")
+    ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(
+        objpoints, imgpoints, gray.shape[::-1], None, None
+    )
+
+    print("\n========== 카메라 캘리브레이션 결과 ==========")
+    print("## 1. 카메라 행렬 (Camera Matrix)")
+    print(mtx)
+    print("\n## 2. 왜곡 계수 (Distortion Coefficients)")
+    print(dist)
+
+    fx, fy, cx, cy = mtx[0,0], mtx[1,1], mtx[0,2], mtx[1,2]
+    print("\n## 3. 주요 파라미터 요약")
+    print(f">> 초점 거리 (Focal Length): fx = {fx:.4f}, fy = {fy:.4f}")
+    print(f">> 주점 (Principal Point): cx = {cx:.4f}, cy = {cy:.4f}")
+
+    # ─────────────────────────────────────────────
+    # 🔎 리프로젝션 에러 계산
+    # ─────────────────────────────────────────────
+    per_view_errors = []
+    total_err = 0.0
+    total_points = 0
+
+    for i in range(len(objpoints)):
+        imgpts2, _ = cv2.projectPoints(objpoints[i], rvecs[i], tvecs[i], mtx, dist)
+        err = cv2.norm(imgpoints[i], imgpts2, cv2.NORM_L2) / len(imgpts2)
+        per_view_errors.append((images[i], float(err)))
+        total_err += err * len(imgpts2)
+        total_points += len(imgpts2)
+
+    mean_err = total_err / total_points
+    print("\n======== 리프로젝션 에러 ========")
+    print(f"OpenCV RMS (ret): {ret:.6f} px")
+    print(f"Mean L2 per-corner: {mean_err:.6f} px")
+
+    per_view_errors.sort(key=lambda x: x[1], reverse=True)
+    worst_k = min(10, len(per_view_errors))
+    print(f"\n오차 큰 상위 {worst_k}장:")
+    for path, e in per_view_errors[:worst_k]:
+        print(f"  {os.path.basename(path):40s}  {e:.6f} px")
+
+    # 텍스트 저장
+    with open('./Camera/reprojection_error_report.txt', 'w', encoding='utf-8') as f:
+        f.write("======== Reprojection Error Report ========\n")
+        f.write(f"OpenCV RMS (ret): {ret:.6f} px\n")
+        f.write(f"Mean L2 per-corner: {mean_err:.6f} px\n\n")
+        f.write("Per-image mean L2 error (px):\n")
+        for path, e in per_view_errors:
+            f.write(f"{os.path.basename(path)}, {e:.6f}\n")
+
+    print("\n📝 리프로젝션 에러 리포트: Camera/reprojection_error_report.txt 저장 완료")
+else:
+    print("⚠️ 유효한 코너를 찾지 못했습니다.")

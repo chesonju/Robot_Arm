@@ -15,20 +15,25 @@ VOICE_PATH = "Speech_recognition/Test_data/sample.m4a"
 IMAGE_PATH_FOR_TEST_1 = "Scene_recognition/Test_data/sample_glossy_paper_vertical.png"
 IMAGE_PATH_FOR_TEST_2 = "Scene_recognition/Test_data/sample_glossy_paper_vertical2.png"
 
+IMAGE_PATH_FOR_TEST_1 = "128_1.png"
+IMAGE_PATH_FOR_TEST_2 = "128_2.png"
+
 # 음성 인식
-print("음성 인식 중...")
-speech_to_text = transcribe_file_faster.transcribe(VOICE_PATH)
-print(speech_to_text)
-print(f"target: {speech_to_text['floor']}\n")
+# print("음성 인식 중...")
+# speech_to_text = transcribe_file_faster.transcribe(VOICE_PATH)
+# print(speech_to_text)
+# print(f"target: {speech_to_text['floor']}\n")
+
+target_floor = "3"
 
 # 첫 패널 촬영 
 buttons_raw = fb.find_buttons(['--image', IMAGE_PATH_FOR_TEST_1, '--output', 'Image_backup/step0.png', '--no_vis'], ctx=CTX)
 
 prev_offset = None
 i = 1
-
+'''
 while True:
-    center = util.find_center_for_distance(fb, IMAGE_PATH_FOR_TEST_1, str(speech_to_text["floor"]), CTX, out_name=f"step1-{i}.png")
+    center = util.find_center_for_distance(fb, IMAGE_PATH_FOR_TEST_1, target_floor, CTX, out_name=f"step1-{i}.png")
     i += 1
     # 중앙 판정
     done, offset, cmd = util.is_centered(center, img_size=(1920,1080), tol_px=10)
@@ -50,14 +55,14 @@ while True:
     prev_offset = offset
     time.sleep(2)
     break
-
+'''
 # 거리 측정용 첫번째 패널 촬영
-first_center = util.find_center_for_distance(fb, IMAGE_PATH_FOR_TEST_1, str(speech_to_text["floor"]), CTX, out_name="step2.png")
+first_center = util.find_center_for_distance(fb, IMAGE_PATH_FOR_TEST_1, target_floor, CTX, out_name="step2.png")
 
 # 로봇이 위나 아래로 움직여야 함 거리측정용 (50mm)
 
 # 이동후 두번째 패널 촬영
-second_center = util.find_center_for_distance(fb, IMAGE_PATH_FOR_TEST_2, str(speech_to_text["floor"]), CTX, out_name="step3.png")
+second_center = util.find_center_for_distance(fb, IMAGE_PATH_FOR_TEST_2, target_floor, CTX, out_name="step3.png")
 
 print("첫 번째 버튼 중심 좌표:", first_center)
 print("두 번째 버튼 중심 좌표:", second_center)

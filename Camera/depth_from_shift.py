@@ -12,15 +12,15 @@ class CameraIntrinsics:
     cy: float
     dist: Optional[np.ndarray] = None
 
-# ✅ 캘리브레이션 결과
+# ✅ 최신 캘리브레이션 결과 적용
 K = np.array([
-    [304.92065479,   0.0,           156.23274445],
-    [  0.0,         313.68343277,   126.36038472],
-    [  0.0,           0.0,             1.0      ]
+    [2.22563840e+03, 0.00000000e+00, 9.16584353e+02],
+    [0.00000000e+00, 2.23904691e+03, 5.13164209e+02],
+    [0.00000000e+0, 0.00000000e+00, 1.00000000e+00]
 ], dtype=np.float64)
 
-dist = np.array([[-9.67711486e-03, -2.24344024e-01, -1.53467994e-03,
-                   6.54834768e-04,  1.48537539e+00]], dtype=np.float64)
+dist = np.array([[ 0.09887097, 0.13530402, -0.00369226, 0.00651958, -1.75474597]],
+                dtype=np.float64)
 
 intr = CameraIntrinsics(
     fx=K[0, 0],
@@ -86,8 +86,12 @@ def depth_from_vertical_shift(
 
 # ---------------- 사용 예시 ----------------
 if __name__ == "__main__":
-    first_center = (200, 130)   # (x, y)
-    second_center = (210, 110)  # (x, y)
+    first_center = (978, 197)   # (x, y)
+    second_center = (976, 829)  # (x, y)
 
-    Z_mm = depth_from_vertical_shift(50, first_center, second_center)
-    print(f"추정 깊이 Z ≈ {Z_mm:.2f} mm")
+    z_est = depth_from_vertical_shift(50, first_center, second_center)
+
+    SCALE_Z = 250.0 / 177.49  # ≈ 1.4086
+    z_corr = z_est * SCALE_Z
+
+    print(f"추정 깊이 Z ≈ {z_corr:.2f} mm")

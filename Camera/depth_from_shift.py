@@ -81,8 +81,37 @@ def depth_from_vertical_shift(
 
     # 4) 깊이 계산: Z = f_y * ΔY / |Δv|
     # 부호까지 보존하려면 abs 제거하고 Z = (intr.fy * delta_y_mm) / dv 사용
-    Z_mm = (intr.fy * delta_y_mm) / abs(dv)
-    return float(Z_mm)
+    z_est = (intr.fy * delta_y_mm) / abs(dv)
+
+    return float(z_est * 1.2)
+
+import numpy as np
+import cv2
+import math
+
+def pixel_to_angles_with_undistort(center, K=K, dist=dist):
+    """
+    K: 3x3 camera matrix, dist: (k1,k2,p1,p2,k3)
+    return:
+      yaw_deg, pitch_deg, ray (카메라 좌표계에서 z=1로 정규화된 방향벡터)
+    """
+
+    u, v = center
+    pts = np.array([[[float(u), float(v)]]], dtype=np.float32)    # (1,1,2)
+    # undistort → 정규화 좌표 (x', y'), z=1의 이미지 평면으로 보면 됨
+    und = cv2.undistortPoints(pts, K, dist)                       # (1,1,2)
+    x_n, y_n = und[0,0,0], und[0,0,1]
+
+    # 카메라 좌표계의 광선 방향 벡터 (스케일 자유)
+    ray = np.array([x_n, y_n, 1.0], dtype=np.float64)
+    ray /= np.linalg.norm(ray)
+
+    # 각도 계산 (광학축 z에 대한 각)
+    yaw = math.atan2(x_n, 1.0)      # 좌우
+    pitch = math.atan2(y_n, 1.0)    # 상하
+
+    return math.degrees(yaw), math.degrees(pitch), ray
+
 
 # ---------------- 사용 예시 ----------------
 if __name__ == "__main__":
@@ -95,3 +124,6 @@ if __name__ == "__main__":
     z_corr = z_est * SCALE_Z
 
     print(f"추정 깊이 Z ≈ {z_corr:.2f} mm")
+
+    yaw_deg, pitch_deg, ray = pixel_to_angles_with_undistort(second_center)
+    print(f"[ANGLE UD] yaw={yaw_deg:.2f}°, pitch={pitch_deg:.2f}°, ray={ray}")

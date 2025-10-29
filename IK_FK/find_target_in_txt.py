@@ -1,4 +1,8 @@
-from . import enhanced_plot
+try:
+    from . import enhanced_plot   # 패키지로 실행될 때
+except ImportError:
+    import enhanced_plot          # 스크립트로 직접 실행될 때
+
 from collections import defaultdict
 from tqdm import tqdm
 import re
@@ -9,6 +13,8 @@ from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__)) + "/"
+
+print(HERE)
 
 def search_last_coord_in_file(filename, target_x, target_y, tol=1.0):
     """
@@ -389,6 +395,7 @@ PAIR_RE = re.compile(
 
 def expected_png_name(angles: str, coords: str) -> str:
     # txtの行と完全一致するファイル名を期待
+    print(f"{HERE}{angles} {coords}.png")
     return f"{HERE}{angles} {coords}.png"
 
 def find_png_by_prefix(angles: str) -> str | None:
@@ -730,16 +737,18 @@ def combine_pair_txt_to_overlay_png(txt_path: str,
 
 if __name__ == "__main__":
     # 一定数の違いがある座標を探す(ここは50)
-    find_axis_jump_pairs_to_txt()
+    find_axis_jump_pairs_to_txt(move=30)
 
     # 特定の座標を探して、対応する角度を描画
     # find_target_in_file_to_png(-300, 200)
+    
+    # print(find_target_in_file(-375, 306, filename=HERE+"angles_coords_step1.txt"))
 
     # y座標が同じベアを探して保存
-    filter_jump_result_same_last_y_and_save_txt(input_path=f"{HERE}50_jump_result.txt",tol_equal=1e-6)
+    filter_jump_result_same_last_y_and_save_txt(input_path=f"{HERE}30_jump_result.txt",tol_equal=1e-6)
 
     # 横にならべて合成
     # combine_pair_txt_to_side_png(txt_path=f"{HERE}50_jump_result_same_last_y.txt", out_dir=f"{HERE}combined_out_side", cleanup=True)
 
     # オーバーレイ合成
-    combine_pair_txt_to_overlay_png(txt_path=f"{HERE}50_jump_result_same_last_y.txt", out_dir=f"{HERE}combined_out_overlay")
+    combine_pair_txt_to_overlay_png(txt_path=f"{HERE}30_jump_result_same_last_y.txt", out_dir=f"{HERE}combined_out_overlay")

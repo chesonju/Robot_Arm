@@ -6,10 +6,11 @@ import datetime
 import threading
 import numpy as np
 from pathlib import Path
+from queue import Queue
 
 from Scene_recognition.Elevator_OCR_RCNN_V2 import find_buttons as fb
 from Camera import depth_from_shift
-from IK_FK import enhanced_plot, find_target_in_txt
+from IK_FK import enhanced_plot, find_target_in_txt, find_target_with_camera_distance
 import util
 from Speech_recognition import transcribe_file_faster  # 필요하면 주석 해제
 
@@ -20,17 +21,20 @@ arm = RobotArm("/dev/cu.usbmodem1101",
                 map_us_min=500, map_us_max=2500,   # 매핑 범위(실서보)
                 safe_us_min=644, safe_us_max=2300) # 안전(제한) 범위
 
-arm.set_offset(2, +10)
-arm.set_offset(3, -10)
+arm.set_offset(2, +8)
+arm.set_offset(3, -6)
 arm.set_offset(4, +6)
 
 arm.set_reversed(2, True)
 arm.set_reversed(4, True)
 
-arm.set_angle(5, 70)  # 베이스 회전 초기 위치
-arm.set_angle(4, 128)
-arm.set_angle(3, 74)
-arm.set_angle(2, 68)
+distance_candidate_mm = {}
+# 초기 위치
+print("로봇 암 초기 위치로 이동")
+arm.set_angle(4, 158)
+arm.set_angle(3, 91)
+arm.set_angle(2, 21)
+arm.set_angle(5, 75)  # 베이스 회전 초기 위치
 
 # --- 준비: 디렉토리 ---
 Path("recordings").mkdir(exist_ok=True, parents=True)
@@ -72,8 +76,6 @@ rec_raw = cv2.VideoWriter(rec_path, fourcc, FPS, (W, H))
 rec_overlay = cv2.VideoWriter(rec_overlay_path, fourcc, FPS, (W, H))
 print(f"[녹화 시작] {rec_path}")
 
-from queue import Queue
-
 # ---- 전역 상태 ----
 task_q = Queue(maxsize=1)  # 동시에 1건만 처리
 
@@ -96,6 +98,8 @@ is_busy = False
 last_center = None          # 마지막으로 찾은 중심 좌표
 last_cmd = None             # last is_centered 결과
 floor_target = None         # 음성인식 사용 시 타겟층 저장
+show_circle = True
+show_angles = False 
 
 # 음성 인식 사용하려면:
 #VOICE_PATH = "Speech_recognition/Test_data/sample.m4a"
@@ -103,7 +107,7 @@ floor_target = None         # 음성인식 사용 시 타겟층 저장
 #floor_target = str(stt.get("floor"))
 #print("음성 인식:", stt)
 
-floor_target = 3
+floor_target = 4    
 
 def run_detection_async(frame_bgr, floor_str):
     global prev_offset, last_center, last_cmd
@@ -162,6 +166,127 @@ def get_fresh_frame(cap, warmup=3):
         raise RuntimeError("프레임 캡처 실패")
     return frm
 
+def draw_angle_overlay(view, fy=2239.0469, cy=513.1642, width=1920, height=1080):
+    import math, cv2, numpy as np
+
+    height, width = view.shape[:2]
+
+    # 수직 화각 절반
+    fov_half = math.atan2(height/2, fy)
+    fov_half_deg = int(np.degrees(fov_half))
+
+    # 각도 스텝 줄이기 (예: 1도 단위)
+    for angle in range(-fov_half_deg, fov_half_deg+1, 1):
+        theta = math.radians(angle)
+        y = int(round(cy + math.tan(theta) * fy))
+
+        if 0 <= y < height:
+            if angle % 5 == 0:  # 5도마다 굵은 선
+                thickness = 2
+                color = (0, 255, 0) if angle == 0 else (0, 200, 0)
+                cv2.putText(view, f"{angle:+d}°", (50, y-5),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+            else:               # 나머지 1도 단위는 얇은 점선 느낌
+                thickness = 1
+                color = (100, 100, 100)
+
+            cv2.line(view, (0, y), (width, y), color, thickness)
+
+    return view
+
+def estimate_distance_button_ring(
+    frame_bgr,
+    center,                 # (cx, cy)
+    f_px=2239.0469,         # 보통 fy
+    D_real_mm=25.0,         # 버튼 실제 지름
+    Z_hint_mm=250.0,        # 대충 현재 거리 힌트
+    roi_size=360,
+    ring_w=6,               # 고리 두께(px)
+    alpha=1.0,              # (바깥-안쪽) 대비 가중
+    beta=0.15,              # r_hint 패널티 가중
+    out_path="Image_backup/debug_button_ring.png"
+):
+    H, W = frame_bgr.shape[:2]
+    cx, cy = int(center[0]), int(center[1])
+
+    # --- ROI ---
+    x1, y1 = max(0, cx - roi_size//2), max(0, cy - roi_size//2)
+    x2, y2 = min(W, cx + roi_size//2), min(H, cy + roi_size//2)
+    roi = frame_bgr[y1:y2, x1:x2]
+    if roi.size == 0:
+        print("[거리] ROI 비어있음"); return None
+
+    cx_r, cy_r = cx - x1, cy - y1
+
+    gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+    gray = cv2.GaussianBlur(gray, (5,5), 0)
+    gray = cv2.convertScaleAbs(gray, alpha=1.2, beta=0)   # 살짝 대비 업
+    edges = cv2.Canny(gray, 80, 160)
+
+    # 기대 반지름(px)
+    r_hint = (f_px * D_real_mm) / (2.0 * max(1e-6, Z_hint_mm))
+    r_min = max(8, int(r_hint * 0.6))
+    r_max = min(int(min(roi.shape[:2]) * 0.48), int(r_hint * 1.6))
+    if r_min >= r_max:
+        r_min = max(8, int(r_hint * 0.5)); r_max = r_min + 20
+
+    def annulus_mask(shape, cx, cy, r, w):
+        """반지름 r, 두께 w의 고리 마스크"""
+        h, w_img = shape[:2]
+        mask_outer = np.zeros((h, w_img), np.uint8)
+        mask_inner = np.zeros((h, w_img), np.uint8)
+        r = max(1, int(round(r)))
+        t = max(1, int(round(w)))
+        cv2.circle(mask_outer, (int(cx), int(cy)), r + t, 255, thickness=-1)
+        cv2.circle(mask_inner, (int(cx), int(cy)), r - t, 255, thickness=-1)
+        mask = cv2.subtract(mask_outer, mask_inner)
+        return mask
+
+    best = None
+    for r in range(r_min, r_max + 1):
+        # 1) 원둘레 근처 엣지 평균
+        m_ring = annulus_mask(edges.shape, cx_r, cy_r, r, ring_w)
+        edge_on_ring = cv2.mean(edges, m_ring)[0]  # 0채널 평균
+
+        # 2) 바깥/안쪽 밝기 대비
+        m_out = annulus_mask(gray.shape, cx_r, cy_r, r + 2*ring_w, ring_w)
+        m_in  = annulus_mask(gray.shape, cx_r, cy_r, r - 2*ring_w, ring_w)
+        outside = cv2.mean(gray, m_out)[0]
+        inside  = cv2.mean(gray, m_in)[0]
+        contrast = outside - inside
+
+        # 3) r_hint로 당기는 패널티
+        penalty = abs(r - r_hint)
+
+        score = edge_on_ring + alpha * contrast - beta * penalty
+        if (best is None) or (score > best[0]):
+            best = (score, r, edge_on_ring, contrast)
+
+    if best is None:
+        print("[거리] 반지름 탐색 실패"); return None
+
+    _, r_best, eo, ct = best
+    d_px = 2.0 * r_best
+    Z_mm = (f_px * D_real_mm) / max(1e-6, d_px)
+
+    # --- 파일로만 시각화 저장 ---
+    vis = roi.copy()
+    cv2.circle(vis, (cx_r, cy_r), int(r_best), (0,255,0), 2)
+    cv2.circle(vis, (cx_r, cy_r), 2, (0,0,255), 2)
+    cv2.putText(vis, f"d={d_px:.1f}px  Z={Z_mm:.1f}mm", (10, 28),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0,255,0), 2)
+    cv2.putText(vis, f"r_hint~{r_hint:.1f}px  score={best[0]:.1f}",
+                (10, 56), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 1)
+
+    # out_path 안전 저장
+    dname = os.path.dirname(out_path)
+    if dname:
+        os.makedirs(dname, exist_ok=True)
+    cv2.imwrite(out_path, vis)
+
+    print(f"[거리] d≈{d_px:.1f}px  Z≈{Z_mm:.1f}mm  (saved {out_path})")
+    return Z_mm
+
 while True:
     ok, frame = cap.read()
     if not ok:
@@ -188,12 +313,22 @@ while True:
     cv2.line(view, (cx_mid, 0),   (cx_mid, H), (0, 255, 0), 1)  # 중앙선(초록)
 
     # 마지막 검출 결과 오버레이
-    if last_center:
+    if last_center and show_circle:
         try:
             cx_btn, cy_btn = int(last_center[0]), int(last_center[1])
-            cv2.circle(view, (cx_btn, cy_btn), 12, (0, 255, 0), 2)
-            cv2.putText(view, f"center=({cx_btn},{cy_btn})", (cx_btn+10, cy_btn-10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+
+            # view와 같은 크기의 반투명 레이어 준비
+            overlay = view.copy()
+            # 원 내부를 색칠 (BGR, -1은 filled)
+            cv2.circle(overlay, (cx_btn, cy_btn), 50, (0, 255, 0), -1)
+            # overlay와 원본을 블렌딩 (alpha=0.3 정도 → 30%만 색 입히기)
+            alpha = 0.5
+            view = cv2.addWeighted(overlay, alpha, view, 1 - alpha, 0)
+
+            # 원 테두리는 그대로 표시
+            cv2.circle(view, (cx_btn, cy_btn), 50, (0, 255, 0), 2)
+            cv2.putText(view, f"center=({cx_btn},{cy_btn})", (cx_btn+25, cy_btn-25),
+                        cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 2)
         except Exception:
             pass
 
@@ -205,16 +340,19 @@ while True:
     cv2.putText(view, f"REC {datetime.datetime.now().strftime('%H:%M:%S')}", (20, H-20),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
+    if show_angles:
+        view = draw_angle_overlay(view, fy=2239.0469, cy=513.1642, width=W, height=H)
+
     rec_overlay.write(view)
     cv2.imshow("webcam", view)
     key = cv2.waitKey(1) & 0xFF
-
 
     if key == 27:  # ESC
         print("종료")
         break
 
     elif key == 32:  # Space
+        show_circle = True
         if task_q.full():
             print("탐지 중... (대기 큐가 가득)")
         else:
@@ -227,10 +365,12 @@ while True:
 
     # ── m 키: 첫 샷 ───────────────────────────────────────────────
     elif key == ord('m'):
-        arm.set_angle(4, 128)
-        arm.set_angle(3, 74)
-        arm.set_angle(2, 68)
-        time.sleep(0.6)  # 너무 길 필요 없음. 대신 프레임 몇 장 버려주자.
+        show_angles = True
+        show_circle = False
+        arm.set_angle(4, 158)
+        arm.set_angle(3, 91)
+        arm.set_angle(2, 21)
+        time.sleep(1)  # 너무 길 필요 없음. 대신 프레임 몇 장 버려주자.
 
         c1 = None
         for attempt in range(20):
@@ -248,7 +388,23 @@ while True:
                 if c1 is not None and len(c1) == 2:
                     depth_sample_1 = (snap1, c1)
                     print(f"[깊이] 첫 번째 샷 성공 (시도 {attempt+1}/20):", snap1, "center:", c1)
-                    print("이제 로봇을 수직으로 50mm 이동하고 'n'을 눌러 두 번째 샷을 찍으세요.")
+
+                    try:
+                        Z = estimate_distance_button_ring(
+                        frame_now, c1,
+                        Z_hint_mm=250.0,               # 대충 현재 추정 거리
+                        out_path=f"debug/ring_depth_try{attempt+1}.png"
+                        )
+                        if Z is not None:
+                            _, angle, _ = depth_from_shift.pixel_to_angles_with_undistort(c1)
+                            end = enhanced_plot.end_effector_xy(128,74,68)
+                            distance_candidate_mm["m_with_25mm"] = (Z, angle, end) 
+                            print(f"[원기반 algorithm 1] Z ≈ {Z:.1f} mm")
+
+                    except Exception as e:
+                        print(f"[깊이] 거리추정 실패: {e}")
+
+                    print("이제 로봇을 수직으로 이동하고 'n'을 눌러 두 번째 샷을 찍으세요.")
                     break
                 else:
                     print(f"[깊이] 탐지 실패 (시도 {attempt+1}/20): center={c1}")
@@ -264,10 +420,10 @@ while True:
         if depth_sample_1 is None:
             print("먼저 'm'으로 첫 샷을 찍어주세요.")
         else:
-            arm.set_angle(2, 51)
-            arm.set_angle(3, 105)
-            arm.set_angle(4, 114)
-            time.sleep(0.6)
+            arm.set_angle(2, 15)
+            arm.set_angle(4, 142)
+            arm.set_angle(3, 113)
+            time.sleep(1)
 
             c2 = None
             for attempt in range(20):
@@ -294,8 +450,23 @@ while True:
                 print("[깊이] 두 번째 샷 20회 시도했지만 실패")
             else:
                 try:
-                    z_mm = depth_from_shift.depth_from_vertical_shift(59, depth_sample_1[1], c2)
+                    z_mm = depth_from_shift.depth_from_vertical_shift(30, depth_sample_1[1], c2)
                     print(f"[깊이] 추정 Z ≈ {z_mm:.2f} mm")
+                    _, angle, _ = depth_from_shift.pixel_to_angles_with_undistort(c1)
+                    end = enhanced_plot.end_effector_xy(142,113,15)
+                    distance_candidate_mm["n_with_triangulation"] = (z_mm, angle, end)
+
+                    Z = estimate_distance_button_ring(
+                    frame_now, c2,
+                    Z_hint_mm=250.0,               # 대충 현재 추정 거리
+                    out_path=f"debug/ring_depth_try{attempt+1}.png"
+                    )
+                    if Z is not None:
+                        distance_candidate_mm["n_with_25mm"] = (Z, angle, end)
+                        print(f"[원기반 algorithm 1] Z ≈ {Z:.1f} mm")
+
+                    depth_sample_2 = (snap2, c2)
+
                 except Exception as e:
                     print("[깊이] 계산 실패:", e)
                 finally:
@@ -306,9 +477,28 @@ while True:
             print("[MOVE] 깊이 정보 없음. m→n 순서로 깊이 먼저 계산하세요.")
         else:
             print("[MOVE] 버튼 누르기 동작 실행 (샘플)")
-            current_x, current_y = enhanced_plot.end_effector_xy(70, 120, 40, L=(104,145,180), base=(0,92), mode="ui")
-            add_depth_x = current_x - z_mm
-            new_coords = (add_depth_x, current_y)
+            cur_x1, cur_y1 = distance_candidate_mm["n_with_triangulation"][2]
+            
+            print(distance_candidate_mm)
 
-            find_target_in_txt.find_target_in_file(new_coords, "./IK_FK/angles_coords_step1.txt")
+            length = distance_candidate_mm["n_with_triangulation"][0]
+            angle = distance_candidate_mm["n_with_triangulation"][1]
+            end = distance_candidate_mm["n_with_triangulation"][2]
 
+            target_coords = find_target_with_camera_distance.plot_geometry (
+                x1=cur_x1, y1=cur_y1, length=length, angle_input=angle,
+                show_plot=False,  
+                save_path="plot_result_1.png"  # 저장할 파일 이름
+            )
+
+            print(target_coords)
+
+            s = find_target_in_txt.find_target_in_file(target_coords[0], target_coords[1], "./IK_FK/angles_coords_step1.txt")
+
+            prefix = s.split(" ")[0] 
+
+            coords = list(map(int, prefix.split("_")))
+
+            arm.set_angle(2, int(coords[2]))
+            arm.set_angle(3, int(coords[1]))
+            arm.set_angle(4, int(coords[0]))

@@ -59,4 +59,4 @@ def all_angles_txt(L=(20,20,20), base=(0,10), step=1,
 
 if __name__ == "__main__":
     # step=1（約 5,929,741 行）。時間＆サイズそれなりにデカいので覚悟を🙏
-    all_angles_txt(L=(104, 145, 180), base=(0,92), step=1)
+    all_angles_txt(L=(105, 147, 185), base=(0,94), step=1)

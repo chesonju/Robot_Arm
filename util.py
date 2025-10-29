@@ -43,7 +43,7 @@ def get_bbox_by_text(parsed_results, target_text):
     best = max(candidates, key=lambda r: r["score"])
     return best["bbox"]
 
-def draw_bbox_and_center(image_path, bbox, backup_dir="Image_backup", out_name="step1.png",
+def draw_bbox_and_center(image_path, bbox, backup_dir="Image_backup", out_name=None,
                          color=(0, 255, 0), thickness=None, dot_radius=10, save=True):
     """
     bbox: (x1,y1,x2,y2)
@@ -70,11 +70,12 @@ def draw_bbox_and_center(image_path, bbox, backup_dir="Image_backup", out_name="
 
     cv2.circle(img, (cx, cy), dot_radius, (0, 255, 0), -1)
 
-    os.makedirs(backup_dir, exist_ok=True)
-    out_path = os.path.join(backup_dir, out_name)
-    if save:
+    # 저장 로직
+    if save and out_name:   # out_name이 None이거나 "" 이면 저장 안 함
+        os.makedirs(backup_dir, exist_ok=True)
+        out_path = os.path.join(backup_dir, out_name)
         cv2.imwrite(out_path, img)
-        print(f'saved: {out_path}\n')
+        print(f"saved: {out_path}\n")
 
     return (cx, cy)
 

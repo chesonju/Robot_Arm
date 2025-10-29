@@ -12,8 +12,8 @@ def run_arm_gui(
     slider_step=1,
     sector_alpha=0.15,
     point_size=4,
-    L=(104, 145, 180),
-    base=(0, 92),
+    L=(105, 147, 185),
+    base=(0, 94),
     joint_limits=((0, -180), (0, -180), (-90, 90)),
     joint_zero_offset=(0, 0, 0),
     show_origin=True,
@@ -142,8 +142,8 @@ def end_effector_xy(
     theta1: float,
     theta2: float,
     theta3: float,
-    L: Iterable[float] = (104.0, 145.0, 180.0),
-    base: Tuple[float, float] = (0.0, 92.0),
+    L: Iterable[float] = (105, 147, 185),
+    base: Tuple[float, float] = (0.0, 94.0),
     mode: str = "ui",  # "ui" → (t1,t2,t3) = (0..180,0..180,0..180)
                        # "internal" → 너의 calc_positions에서 쓰던 내부각(deg)
 ) -> Tuple[float, float]:
@@ -185,7 +185,7 @@ if __name__ == "__main__":
     # run_arm_gui(theta1=159, theta2=79, theta3=32, just_save_plot=True)
     # run_arm_gui(theta1=134, theta2=115, theta3=21, just_save_plot=True)
 
-    gui = run_arm_gui(theta1=70, theta2=120, theta3=40, block=True)  # 非ブロッキング
+    # gui = run_arm_gui(theta1=70, theta2=120, theta3=40, block=True)  # 非ブロッキング
 
-    xy = end_effector_xy(70, 120, 40, L=(104,145,180), base=(0,92), mode="ui")
+    xy = end_effector_xy(142, 113, 15)
     print(xy)

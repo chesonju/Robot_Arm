@@ -3,6 +3,7 @@ from Scene_recognition.Elevator_OCR_RCNN_V2 import find_buttons as fb
 from Camera import depth_from_shift
 import util
 import time
+import numpy as np
 
 CTX = fb.preload_models(
     det_path="Scene_recognition/Elevator_OCR_RCNN_V2/frozen_model/detection_graph.pb",
@@ -70,5 +71,16 @@ print("두 번째 버튼 중심 좌표:", second_center)
 # 깊이 추정 (단위: mm)
 depth = depth_from_shift.depth_from_vertical_shift(50, first_center, second_center)
 print(f"추정 깊이 Z ≈ {depth:.2f} mm")
+
+# 픽셀 좌표 → 세로 각도 변환 함수
+def pixel_to_angle_y(v, fy, cy):
+    return np.degrees(np.arctan((v - cy) / fy))
+
+# 예: v=800 픽셀, fy=1653, cy=701
+v = second_center[1]
+fy = 1653.0
+cy = 701.0
+theta_y = pixel_to_angle_y(v, fy, cy)
+print(f"세로 각도 = {theta_y:.3f} 도")
 
 # 팔 움직이기

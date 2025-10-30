@@ -10,7 +10,7 @@ from queue import Queue
 
 from Scene_recognition.Elevator_OCR_RCNN_V2 import find_buttons as fb
 from Camera import depth_from_shift
-from IK_FK import enhanced_plot, find_target_in_txt, find_target_with_camera_distance
+from IK_FK import enhanced_plot, find_target_in_txt, find_target_with_camera_distance, find_push_form
 import util
 from Speech_recognition import transcribe_file_faster  # 필요하면 주석 해제
 
@@ -363,9 +363,14 @@ while True:
     elif key == 13:  # Enter: 마지막 중심 콘솔 재로그
         print("[상태] last_center:", last_center, " last_cmd:", last_cmd)
 
+    elif key == ord("i"):
+        arm.set_angle(4, 158)
+        arm.set_angle(3, 91)
+        arm.set_angle(2, 21)
+
     # ── m 키: 첫 샷 ───────────────────────────────────────────────
     elif key == ord('m'):
-        show_angles = True
+        show_angles = False
         show_circle = False
         arm.set_angle(4, 158)
         arm.set_angle(3, 91)
@@ -423,7 +428,7 @@ while True:
             arm.set_angle(2, 15)
             arm.set_angle(4, 142)
             arm.set_angle(3, 113)
-            time.sleep(1)
+            time.sleep(3)
 
             c2 = None
             for attempt in range(20):
@@ -478,6 +483,8 @@ while True:
         else:
             print("[MOVE] 버튼 누르기 동작 실행 (샘플)")
             cur_x1, cur_y1 = distance_candidate_mm["n_with_triangulation"][2]
+            cur_x1 = round(cur_x1, 2)
+            cur_y1 = round(cur_y1, 2)
             
             print(distance_candidate_mm)
 
@@ -491,14 +498,27 @@ while True:
                 save_path="plot_result_1.png"  # 저장할 파일 이름
             )
 
-            print(target_coords)
+            print(f"target_coords -> {target_coords}")
 
-            s = find_target_in_txt.find_target_in_file(target_coords[0], target_coords[1], "./IK_FK/angles_coords_step1.txt")
+            #result1 = find_target_in_txt.find_target_in_file(target_coords[0] + 20 , target_coords[1] - 32, "./IK_FK/angles_coords_step1.txt")
+            #prefix = result1.split(" ")[0] 
+            #coords = list(map(int, prefix.split("_")))
 
-            prefix = s.split(" ")[0] 
-
+            result2 = find_push_form.find_and_run_target(target_coords[0] + 20 , target_coords[1] - 32)
+            prefix = result2.split(" ")[0]
             coords = list(map(int, prefix.split("_")))
 
             arm.set_angle(2, int(coords[2]))
             arm.set_angle(3, int(coords[1]))
+            time.sleep(5)
             arm.set_angle(4, int(coords[0]))
+
+            input = input("반동 기동 확인 y n")
+
+            if input == "y":
+                move_back = int(coords[0]) - 10
+                print(f"move back to {move_back}")
+                if move_back > 170:
+                    arm.set_angle(4, 158)
+                    time.sleep(5)
+                    arm.set_angle(4, int(coords[0]), for_push=True)

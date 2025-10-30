@@ -22,7 +22,7 @@ class RobotArm:
         map_us_max=2500,
         safe_us_min=644,     # ← 실제 전송 '클램프'에 쓰는 안전범위
         safe_us_max=2300,
-        write_delay=0
+        write_delay=1
     ):
         self.ser = serial.Serial(port, baudrate, timeout=0.2)
 
@@ -70,15 +70,15 @@ class RobotArm:
             d = 180.0 - d
         return max(0.0, min(180.0, d))
 
-    def _send(self, motor_id: int, us_value: int):
-        self.ser.write(f"{int(motor_id)} {int(us_value)} 1\n".encode("ascii"))
+    def _send(self, motor_id: int, us_value: int, speed: int = 1):
+        self.ser.write(f"{int(motor_id)} {int(us_value)} {int(speed)}\n".encode("ascii"))
         print(f"[RobotArm] 모터 {motor_id} → {us_value}μs")
         
         if self.write_delay:
             time.sleep(self.write_delay)
 
     # ---------- 퍼블릭 API ----------
-    def set_angle(self, motor_id: int, deg: float, smooth: bool = True, step_deg: float = 3.0, delay: float = 0):
+    def set_angle(self, motor_id: int, deg: float, smooth: bool = True, step_deg: float = 50.0, delay: float = 1, for_push = False):
         """
         모터ID를 deg(°)로 이동.
         1) 오프셋/역방향 반영 → 2) 매핑범위로 펄스 계산 → 3) 안전범위로 클램프 후 전송.
@@ -97,6 +97,11 @@ class RobotArm:
 
         if not smooth:
             self._send(motor_id, target_us)
+            self._last_us[motor_id] = target_us
+            return
+        
+        if for_push:
+            self._send(motor_id, target_us, speed = 0)
             self._last_us[motor_id] = target_us
             return
 

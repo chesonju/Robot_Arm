@@ -36,8 +36,8 @@ def plot_geometry(x1, y1, length, angle_input, show_plot=False, save_path=None):
     # 2-2. Setup the plot
     # ---------------------------------
     fig, ax = plt.subplots(figsize=(6, 6))
-    ax.set_xlim(-600, 50)
-    ax.set_ylim(-50, 600)
+    ax.set_xlim(-500, 50)
+    ax.set_ylim(-50, 500)
     ax.set_aspect('equal', adjustable='box')
     ax.set_title("Coordinate Visualization")
     ax.set_xlabel("X-Axis")
@@ -92,7 +92,7 @@ def plot_geometry(x1, y1, length, angle_input, show_plot=False, save_path=None):
     # ---------------------------------
     # 2-7. Show legend, Save, and/or Show Plot (수정됨)
     # ---------------------------------
-    ax.legend(loc='upper right')
+    ax.legend(loc='lower right')
     
     # Save the figure if save_path is provided
     if save_path:
@@ -123,10 +123,11 @@ if __name__ == "__main__":
 
     x1, y1 = end_effector_xy(114,105,51)
 
+    x1, y1 = (-140.3, 300.6)
     print(x1, y1)
 
     coords1 = plot_geometry(
-        x1=x1, y1=y1, length=220, angle_input=-5,
+        x1=x1, y1=y1, length=188.87, angle_input=-3.85,
         show_plot=True,  
         save_path="plot_result_1.png"  # 저장할 파일 이름
     )

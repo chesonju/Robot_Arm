@@ -85,10 +85,6 @@ def depth_from_vertical_shift(
 
     return float(z_est * 1.2)
 
-import numpy as np
-import cv2
-import math
-
 def pixel_to_angles_with_undistort(center, K=K, dist=dist):
     """
     K: 3x3 camera matrix, dist: (k1,k2,p1,p2,k3)

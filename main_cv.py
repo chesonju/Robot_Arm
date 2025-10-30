@@ -152,7 +152,7 @@ def run_detection_async(frame_bgr, floor_str):
         print("[오류] 탐지 실패:", e)
 
 
-print("스페이스바: 버튼 탐지 / Enter: 현재 중심 재표시 / m: 깊이 1샷 / n: 깊이 2샷 후 계산 / g: 버튼 누르기 / ESC: 종료")
+print("스페이스바: 버튼 탐지 및 중심 정렬 / Enter: 현재 중심 재표시 / m: 깊이 1샷 / n: 깊이 2샷 후 계산 / g: 버튼 누르기 동작 / i: 로봇 정렬 / ESC: 종료")
 
 depth_sample_1 = None  # (스냅파일경로, center)
 depth_sample_2 = None  # (스냅파일경로, center)

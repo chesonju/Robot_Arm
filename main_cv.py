@@ -5,15 +5,16 @@ import time
 import datetime
 import threading
 import numpy as np
+import math
 from pathlib import Path
 from queue import Queue
+import chime
+import util
 
 from Scene_recognition.Elevator_OCR_RCNN_V2 import find_buttons as fb
 from Camera import depth_from_shift
 from IK_FK import enhanced_plot, find_target_in_txt, find_target_with_camera_distance, find_push_form
-import util
-from Speech_recognition import transcribe_file_faster  # 필요하면 주석 해제
-
+from Speech_recognition import transcribe_file_faster, wake_word_detector
 from Robot.RobotArm import RobotArm
 
 arm = RobotArm("/dev/cu.usbmodem1101",
@@ -21,6 +22,7 @@ arm = RobotArm("/dev/cu.usbmodem1101",
                 map_us_min=500, map_us_max=2500,   # 매핑 범위(실서보)
                 safe_us_min=644, safe_us_max=2300) # 안전(제한) 범위
 
+# 모터 보정값 설정
 arm.set_offset(2, +8)
 arm.set_offset(3, -6)
 arm.set_offset(4, +6)
@@ -29,6 +31,7 @@ arm.set_reversed(2, True)
 arm.set_reversed(4, True)
 
 distance_candidate_mm = {}
+
 # 초기 위치
 print("로봇 암 초기 위치로 이동")
 arm.set_angle(4, 158)
@@ -65,6 +68,10 @@ W = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)) or W
 H = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)) or H
 FPS = cap.get(cv2.CAP_PROP_FPS) or FPS
 
+# 카메라 캘리브레이션 상수
+FY = 2239.0469
+CY =513.1642
+
 # --- 레코더(항상 녹화) ---
 ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 fourcc = cv2.VideoWriter_fourcc(*"mp4v")
@@ -79,6 +86,24 @@ print(f"[녹화 시작] {rec_path}")
 # ---- 전역 상태 ----
 task_q = Queue(maxsize=1)  # 동시에 1건만 처리
 
+# --- 상태 ---
+prev_offset = None
+is_busy = False
+last_center = None          # 마지막으로 찾은 중심 좌표
+last_cmd = None             # last is_centered 결과
+floor_target = None         # 음성인식 사용 시 타겟층 저장
+show_circle = True
+show_angles = False 
+
+depth_sample_1 = None  # (스냅파일경로, center)
+depth_sample_2 = None  # (스냅파일경로, center)
+
+# --- 거리 추정시 offset x = 20, y = -32---
+TARGET_X_OFFSET = 20
+TARGET_Y_OFFSET = -32
+
+MOVE_BACK_STEP = 10
+
 def worker():
     while True:
         frame_bgr, floor_str = task_q.get()
@@ -91,23 +116,6 @@ def worker():
 
 # 프로그램 시작 시 워커 하나만 띄우기 (while 루프 들어가기 전에)
 threading.Thread(target=worker, daemon=True).start()
-
-# --- 상태 ---
-prev_offset = None
-is_busy = False
-last_center = None          # 마지막으로 찾은 중심 좌표
-last_cmd = None             # last is_centered 결과
-floor_target = None         # 음성인식 사용 시 타겟층 저장
-show_circle = True
-show_angles = False 
-
-# 음성 인식 사용하려면:
-#VOICE_PATH = "Speech_recognition/Test_data/sample.m4a"
-#stt = transcribe_file_faster.transcribe(VOICE_PATH)
-#floor_target = str(stt.get("floor"))
-#print("음성 인식:", stt)
-
-floor_target = 4    
 
 def run_detection_async(frame_bgr, floor_str):
     global prev_offset, last_center, last_cmd
@@ -151,11 +159,7 @@ def run_detection_async(frame_bgr, floor_str):
     except Exception as e:
         print("[오류] 탐지 실패:", e)
 
-
 print("스페이스바: 버튼 탐지 및 중심 정렬 / Enter: 현재 중심 재표시 / m: 깊이 1샷 / n: 깊이 2샷 후 계산 / g: 버튼 누르기 동작 / i: 로봇 정렬 / ESC: 종료")
-
-depth_sample_1 = None  # (스냅파일경로, center)
-depth_sample_2 = None  # (스냅파일경로, center)
 
 def get_fresh_frame(cap, warmup=3):
     # 버퍼에 남은 오래된 프레임 비우기 + 최신 프레임 확보
@@ -166,7 +170,7 @@ def get_fresh_frame(cap, warmup=3):
         raise RuntimeError("프레임 캡처 실패")
     return frm
 
-def draw_angle_overlay(view, fy=2239.0469, cy=513.1642, width=1920, height=1080):
+def draw_angle_overlay(view, fy=FY, cy=CY, width=W, height=H):
     import math, cv2, numpy as np
 
     height, width = view.shape[:2]
@@ -197,7 +201,7 @@ def draw_angle_overlay(view, fy=2239.0469, cy=513.1642, width=1920, height=1080)
 def estimate_distance_button_ring(
     frame_bgr,
     center,                 # (cx, cy)
-    f_px=2239.0469,         # 보통 fy
+    f_px=FY,         # 보통 fy
     D_real_mm=25.0,         # 버튼 실제 지름
     Z_hint_mm=250.0,        # 대충 현재 거리 힌트
     roi_size=360,
@@ -287,6 +291,25 @@ def estimate_distance_button_ring(
     print(f"[거리] d≈{d_px:.1f}px  Z≈{Z_mm:.1f}mm  (saved {out_path})")
     return Z_mm
 
+# 음성 인식 사용하려면:
+#VOICE_PATH = "Speech_recognition/Test_data/sample.m4a"
+#stt = transcribe_file_faster.transcribe(VOICE_PATH)
+#floor_target = str(stt.get("floor"))
+#print("음성 인식:", stt)
+
+# 'ok computer' 웨이크 워드 감지 시도
+if wake_word_detector.detect_wake_word(keyword="ok computer", threshold=0.5):
+    recorded_file = wake_word_detector.record_command(filename="Speech_recognition/temp_command_1.wav")
+    
+    transcription_result = transcribe_file_faster.transcribe(recorded_file)
+    # print(f"STT 결과: {transcription_result['text']}")
+    
+else:
+    print("웨이크 워드 감지가 중지되었습니다.")
+
+floor_target = transcription_result.get("floor")
+print(f"floor_target -> {floor_target}")
+
 while True:
     ok, frame = cap.read()
     if not ok:
@@ -341,7 +364,7 @@ while True:
                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
     if show_angles:
-        view = draw_angle_overlay(view, fy=2239.0469, cy=513.1642, width=W, height=H)
+        view = draw_angle_overlay(view, fy=FY, cy=CY, width=W, height=H)
 
     rec_overlay.write(view)
     cv2.imshow("webcam", view)
@@ -363,7 +386,8 @@ while True:
     elif key == 13:  # Enter: 마지막 중심 콘솔 재로그
         print("[상태] last_center:", last_center, " last_cmd:", last_cmd)
 
-    elif key == ord("i"):
+    elif key == ord("i"): # 로봇 초기 포지션 이동
+        chime.info()
         arm.set_angle(4, 158)
         arm.set_angle(3, 91)
         arm.set_angle(2, 21)
@@ -403,12 +427,13 @@ while True:
                         if Z is not None:
                             _, angle, _ = depth_from_shift.pixel_to_angles_with_undistort(c1)
                             end = enhanced_plot.end_effector_xy(128,74,68)
-                            distance_candidate_mm["m_with_25mm"] = (Z, angle, end) 
-                            print(f"[원기반 algorithm 1] Z ≈ {Z:.1f} mm")
+                            #distance_candidate_mm["m_with_25mm"] = (Z, angle, end) 
+                            #print(f"[원기반 algorithm 1] Z ≈ {Z:.1f} mm")
 
                     except Exception as e:
                         print(f"[깊이] 거리추정 실패: {e}")
 
+                    chime.success()
                     print("이제 로봇을 수직으로 이동하고 'n'을 눌러 두 번째 샷을 찍으세요.")
                     break
                 else:
@@ -467,21 +492,26 @@ while True:
                     out_path=f"debug/ring_depth_try{attempt+1}.png"
                     )
                     if Z is not None:
-                        distance_candidate_mm["n_with_25mm"] = (Z, angle, end)
-                        print(f"[원기반 algorithm 1] Z ≈ {Z:.1f} mm")
+                        pass
+                        # distance_candidate_mm["n_with_25mm"] = (Z, angle, end)
+                        # print(f"[원기반 algorithm 1] Z ≈ {Z:.1f} mm")
 
                     depth_sample_2 = (snap2, c2)
+                    chime.success()
 
                 except Exception as e:
                     print("[깊이] 계산 실패:", e)
                 finally:
                     depth_sample_1 = None
 
+    # ── g 키: 버튼 누르기 ─────────────────────────────────────────
     elif key == ord('g'):  # Go: 현재 깊이와 중심으로 이동 명령
+        chime.info()
         if depth_sample_2 is None:
+            chime.info()
             print("[MOVE] 깊이 정보 없음. m→n 순서로 깊이 먼저 계산하세요.")
         else:
-            print("[MOVE] 버튼 누르기 동작 실행 (샘플)")
+            print("[MOVE] 버튼 누르기 동작 실행")
             cur_x1, cur_y1 = distance_candidate_mm["n_with_triangulation"][2]
             cur_x1 = round(cur_x1, 2)
             cur_y1 = round(cur_y1, 2)
@@ -493,9 +523,9 @@ while True:
             end = distance_candidate_mm["n_with_triangulation"][2]
 
             target_coords = find_target_with_camera_distance.plot_geometry (
-                x1=cur_x1, y1=cur_y1, length=length, angle_input=angle,
+                x1=int(cur_x1), y1=int(cur_y1), length=length, angle_input=angle,
                 show_plot=False,  
-                save_path="plot_result_1.png"  # 저장할 파일 이름
+                save_path="[MOVE] 버튼 누르기 동작.png"  # 저장할 파일 이름
             )
 
             print(f"target_coords -> {target_coords}")
@@ -504,7 +534,7 @@ while True:
             #prefix = result1.split(" ")[0] 
             #coords = list(map(int, prefix.split("_")))
 
-            result2 = find_push_form.find_and_run_target(target_coords[0] + 20 , target_coords[1] - 32)
+            result2 = find_push_form.find_and_run_target(target_coords[0] + TARGET_X_OFFSET , target_coords[1] + TARGET_Y_OFFSET)
             prefix = result2.split(" ")[0]
             coords = list(map(int, prefix.split("_")))
 
@@ -513,12 +543,74 @@ while True:
             time.sleep(5)
             arm.set_angle(4, int(coords[0]))
 
-            input = input("반동 기동 확인 y n")
+            input("다음 동작")
+            chime.info()
+            print("움직임 보정이 필요합니까? [yes, 네, 예, 응] / [no, 아니오, 아니, 놉]")
+            recorded_file = wake_word_detector.record_command(filename="Speech_recognition/temp_command_2.wav")
+            transcription_result = transcribe_file_faster.transcribe(recorded_file)
+            print(transcription_result)
 
-            if input == "y":
-                move_back = int(coords[0]) - 10
+            is_need_correction = transcription_result.get("is_yes_no")
+
+            while is_need_correction == "yes":
+
+                print("움직임 보정 : 위로, 아래로, 앞으로")
+                recorded_file = wake_word_detector.record_command(filename="Speech_recognition/temp_command_2-1.wav")
+                transcription_result = transcribe_file_faster.transcribe(recorded_file)
+
+                move = transcription_result.get("correction")
+                print(f"correction -> {move}")
+
+                current_x, current_y = enhanced_plot.end_effector_xy(coords[0], coords[1], coords[2])
+                arm.set_angle(4, int(coords[0] + 8)) # 보정 동작시 충돌 방지 를 위한 약간 후퇴
+                time.sleep(5)
+
+                if move == "up":
+                    correcting = find_push_form.find_and_run_target(current_x, current_y + 15).split(" ")[0]
+                    coords = list(map(int, correcting.split("_")))
+
+                elif move == "down":
+                    correcting = find_push_form.find_and_run_target(current_x, current_y - 15).split(" ")[0]
+                    coords = list(map(int, correcting.split("_")))
+
+                elif move == "forward":
+                    correcting = find_push_form.find_and_run_target(current_x + 5, current_y).split(" ")[0]
+                    coords = list(map(int, correcting.split("_")))
+
+                arm.set_angle(2, int(coords[2]))
+                arm.set_angle(3, int(coords[1]))
+                time.sleep(5)
+                arm.set_angle(4, int(coords[0]))
+                time.sleep(2)
+
+                input("다음 동작")
+                chime.info()
+                print("움직임 보정이 필요합니까? [yes, 네, 예, 응] / [no, 아니오, 아니, 놉]")
+                recorded_file = wake_word_detector.record_command(filename="Speech_recognition/temp_command_2.wav")
+                transcription_result = transcribe_file_faster.transcribe(recorded_file)
+                print(transcription_result)
+
+                is_need_correction = transcription_result.get("is_yes_no")
+
+            input("다음 동작")
+            chime.info()
+            print("반동 기동 확인 [yes, 네, 예, 응] / [no, 아니오, 아니, 놉]")
+
+            recorded_file = wake_word_detector.record_command(filename="Speech_recognition/temp_command_3.wav")
+            transcription_result = transcribe_file_faster.transcribe(recorded_file)
+            print(f"{transcription_result['text']}")
+
+            push = transcription_result.get("is_yes_no")
+
+            if push == "yes":
+                chime.info()
+                move_back = int(coords[0]) + MOVE_BACK_STEP
                 print(f"move back to {move_back}")
-                if move_back > 170:
-                    arm.set_angle(4, 158)
+                if move_back < 170:
+                    arm.set_angle(4, move_back)
                     time.sleep(5)
                     arm.set_angle(4, int(coords[0]), for_push=True)
+                    time.sleep(2)
+                    chime.success()
+                    arm.set_angle(4, int(coords[0] + MOVE_BACK_STEP))
+                    chime.success()

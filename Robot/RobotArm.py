@@ -209,14 +209,21 @@ if __name__ == "__main__":
 
     #arm.set_angle(5, 80) # 베이스 회전
 
-    arm.set_angle(4, 158)
+    arm.set_angle(4, 150)
     arm.set_angle(3, 91)
     arm.set_angle(2, 21)
 
-    input("엔터 누르면 다음 동작...") 
+    time.sleep(2)
+    print("aaa")
 
-    arm.set_angle(2, 15)
-    arm.set_angle(4, 142)
-    arm.set_angle(3, 113)
+    arm.set_angle(4, 158)
+
+    input("엔터 누르면 다음 동작...")
+
+    arm.set_angle(4, 150, for_push=True)
+
+    #arm.set_angle(2, 15)
+    #arm.set_angle(4, 142)
+    #arm.set_angle(3, 113)
 
 # 158_91_21⇨142_113_15_overlay -140, 270 30mm

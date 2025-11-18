@@ -1,5 +1,5 @@
-import find_target_in_txt
-import enhanced_plot
+from . import find_target_in_txt
+from . import enhanced_plot
 import os, re
 
 HERE = os.path.dirname(os.path.abspath(__file__)) + "/"
@@ -134,6 +134,7 @@ def find_and_run_target(target_x, target_y):
             
             print(f"\n--- 🏆 최종 확정 (가운데 {middle_index}번 인덱스 항목) ---")
             print(best_hit)
+            return best_hit
             
         except (ValueError, IndexError) as e:
             print(f"\n오류: 최종 항목을 선택하는 중 오류가 발생했습니다: {e}")
@@ -143,6 +144,7 @@ def find_and_run_target(target_x, target_y):
         print("모든 조건(좌표, Y축, 각도, 기하학적 위치)을 만족하는 결과를 찾을 수 없습니다.")
         return # 함수 종료
 
+    '''
     # 6. GUI 실행
     if best_hit:
         try:
@@ -156,7 +158,7 @@ def find_and_run_target(target_x, target_y):
             print(f"\n오류: Txt 파싱 또는 GUI 실행 중 오류 발생: {e}")
     else:
         print("최종 확정된 'best_hit'이 없어 GUI를 실행할 수 없습니다.")
-
+    '''
 
 # =================================================
 # 메인 실행 블록

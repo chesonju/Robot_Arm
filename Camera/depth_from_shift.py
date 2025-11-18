@@ -83,9 +83,10 @@ def depth_from_vertical_shift(
     # 부호까지 보존하려면 abs 제거하고 Z = (intr.fy * delta_y_mm) / dv 사용
     z_est = (intr.fy * delta_y_mm) / abs(dv)
 
-    return float(z_est * 1.2)
+    return float(z_est * 1.3)
 
 def pixel_to_angles_with_undistort(center, K=K, dist=dist):
+    import math
     """
     K: 3x3 camera matrix, dist: (k1,k2,p1,p2,k3)
     return:
